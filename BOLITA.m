@@ -21,8 +21,8 @@ D=jacobian(y,u);
 
 x1=1;
 x2=0;
-x3=m*g*x1;
-u= m*g*R*x1;
+x3=m*g*x1
+u= m*g*R*x1
 
 
 A = eval(A)
@@ -34,35 +34,68 @@ D = eval(D)
 P= zpk(ss(A,B,C,D))
 
 
-%controlDOR
-k= db2mag(76.3);
-CI=zpk([-3.16,-3.16],[0, -1000], -k)
+%controlador teniendo en cuenta las condiciones temporales
+OS = 10
+fa = -log(OS)/sqrt((pi^2 + (log(OS)^2)))
 
+phi_p = atan(sqrt(1 - fa^2)/fa)
+p = tan(phi_p)
+k= db2mag(108);
+CI=zpk([-3.162, -3.162, -400], [0, -1000, -1000], -k)
 
 %lazo abierto
-L = minreal(P*CI)
+L = minreal(P*CI) %Estable a lazo cerrado con MF 61.7
 
 
 % transferencias
 T = minreal (L/(1+L))
 S = minreal(1/(1 + L))
 
-%%
+%Verificamos las condiciones temporales 
+step(T)
+%% Controlador Discreto
 s=tf('s');
 
 fase = deg2rad(25);
 m=1;
 p1=3.16;
-wgc=p1/tan(fase/(m*2));
+wgc=206;
 
 fase_dig=deg2rad(5);
 
-Ts =4*tan(fase_dig/2)/wgc; 
+Ts =pi*5/(180*wgc)
 
 H = (1 -s*(Ts/4))/(1+s*(Ts/4));
 
-L=minreal(CI*P*H)
+C2 = minreal(H*CI)
 
+Ts1 = 4e-4
+
+Cd = c2d(C2, Ts1, 'tustin')
+
+L1 = minreal(H*L)
+
+%% Realimentacion de Estados
+
+%
+Aa = [A zeros(3, 1); -C 0]
+Ba = [B; -D]
+
+%Hago acker con los polos complejos conjugados en donde en un lugar donde
+%sean estables ya que no se pide requerimientos y agrego un polo en cero
+%para tener accion integral
+%Tomo polos random CC en el semiplano izquierdo
+ceda = 0.9
+sigma = 5 
+wn = sigma/ceda
+wd = sqrt(wn^2 - sigma^2)
+
+%Defino las ganancias
+Ka = acker(Aa, Ba, [-sigma + wd*i, -sigma - wd*i, 0, -10])
+
+%Obtengo K y ki
+K = Ka(1:3)
+kI = -Ka(end)
 
 
 
