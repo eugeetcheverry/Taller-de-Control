@@ -104,13 +104,13 @@ void loop() {
       float theta = (anguloRot*180/PI-theta0);// theta0 el error sistematico de la IMU
 
       anguloRotAnt = anguloRot;
-     // delay(15);
+      delay(15);
 
      //----------------------------Calcular PhI---------------------------------------------------
 
       GIRO = analogRead(potPin);               // Lee el valor analogico del potenciometro
       //float phi = map(GIRO, 0, 1023, -90, 270);// - phi0;     // Mapea ese valor a un angulo entre 0 grados y 360 grados
-      phi = ((float)GIRO / 1023.0) * (270.0 - (-90.0)) + (-90.0);
+      phi = map(GIRO, 500, 600, 90, 135) - phi0;
      //----------------------------Enviar Datos---------------------------------------------------
       matlab_send(theta, phi, u);
     
