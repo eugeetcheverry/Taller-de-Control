@@ -1,0 +1,151 @@
+clc;
+clear all;
+close all;
+
+syms x1 x2 x3 u y;
+
+g=10;
+m=0.1;
+L=1e-2;
+R=4;
+
+f1=x2;
+f2=g-x3/(m*x1);
+f3=u/L-x3*R/L;
+y=x1;
+
+A=jacobian([f1;f2;f3],[x1,x2,x3]);
+B=jacobian([f1;f2;f3],u);
+C=jacobian(y,[x1,x2,x3]);
+D=jacobian(y,u);
+
+x1=1;
+x2=0;
+x3=m*g*x1
+u= m*g*R*x1
+
+
+A = eval(A)
+B = eval(B)
+C = eval(C)
+D = eval(D)
+
+%planta del sist
+P= zpk(ss(A,B,C,D))
+
+
+%controlador teniendo en cuenta las condiciones temporales
+OS = 10
+fa = -log(OS)/sqrt((pi^2 + (log(OS)^2)))
+
+phi_p = atan(sqrt(1 - fa^2)/fa)
+p = tan(phi_p)
+k= db2mag(108);
+CI=zpk([-3.162, -3.162, -400], [0, -1000, -1000], -k)
+
+%lazo abierto
+L = minreal(P*CI) %Estable a lazo cerrado con MF 61.7
+
+
+% transferencias
+T = minreal (L/(1+L))
+S = minreal(1/(1 + L))
+
+%Verificamos las condiciones temporales 
+step(T)
+%% Controlador Discreto
+s=tf('s');
+
+fase = deg2rad(25);
+m=1;
+p1=3.16;
+wgc=206;
+
+fase_dig=deg2rad(5);
+
+Ts =pi*5/(180*wgc)
+
+H = (1 -s*(Ts/4))/(1+s*(Ts/4));
+
+C2 = minreal(H*CI)
+
+Ts1 = 4e-4
+
+Cd = c2d(C2, Ts1, 'tustin')
+
+L1 = minreal(H*L)
+
+%% Realimentacion de Estados
+
+%
+Aa = [A zeros(3, 1); -C 0]
+Ba = [B; -D]
+
+%Hago acker con los polos complejos conjugados en donde en un lugar donde
+%sean estables ya que no se pide requerimientos y agrego un polo en cero
+%para tener accion integral
+%Tomo polos random CC en el semiplano izquierdo
+ceda = 0.9
+sigma = 5 
+wn = sigma/ceda
+wd = sqrt(wn^2 - sigma^2)
+
+%Defino las ganancias
+Ka = acker(Aa, Ba, [-sigma + wd*i, -sigma - wd*i, 0, -10])
+
+%Obtengo K y ki
+K = Ka(1:3)
+kI = -Ka(end)
+
+%% Observador 
+
+%Comprobación de observabilidad
+n = size(A,1);
+if rank(obsv(A,C)) ~= n
+    error('Sistema NO observable: rank(obsv(A,C)) = %d (debe ser %d)', rank(obsv(A,C)), n);
+end
+
+% 2) Selección automática de polos del observador (si K existe usa polos cerrados)
+if exist('K','var')
+    % polos del lazo cerrado con realimentación de estados
+    pc = eig(A - B*K);
+    % elegir observador ~ 5 veces más rápido (factor ajustable)
+    factor = 2;
+    p_obs = factor * pc;
+    % Si hay polos complejos aparecen pares; keep size n
+    % En caso de que el escalado produzca polos con parte real positiva, forzamos negativo
+    for ii=1:length(p_obs)
+        if real(p_obs(ii)) >= 0
+            p_obs(ii) = -abs(real(p_obs(ii))) - ii; % desplazar a izquierda si algo raro
+        end
+    end
+else
+    % fallback: polos "manuales" rápidos en semiplano izquierdo
+    p_obs = [-6 -8 -10];
+end
+
+% Asegurar que p_obs tenga longitud n
+if length(p_obs) ~= n
+    % si hay más/menos, tomar los n valores con mayor parte real negativa
+    p_obs = sort(p_obs, 'ComparisonMethod','real');
+    p_obs = p_obs(1:n);
+end
+
+% 3) Cálculo de la ganancia del observador (L)
+Lo = place(A', C', p_obs)';    % Lo es (n x ny) -> aquí ny = 1
+disp('Polos elegidos para observador completo:');
+disp(p_obs.');
+disp('Ganancia observador Lo:');
+disp(Lo);
+
+% Ecuación del estimador continuo (uso conceptual):
+x = [x1 x2 x3];
+dot_xhat = A*x + B*u + Lo*(y - C*x);
+
+
+
+
+
+
+
+
